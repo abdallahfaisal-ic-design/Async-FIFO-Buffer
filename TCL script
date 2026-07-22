@@ -1,0 +1,77 @@
+
+# Synopsys Design Compiler Script for Asynchronous FIFO
+
+set top_module asynchronous_fifo
+
+define_design_lib work -path ./work
+
+lappend search_path ./std_cells
+lappend search_path ./rtl
+
+set TTLIB "scmetro_tsmc_cl013g_rvt_tt_1p2v_25c.db"
+
+set target_library [list $TTLIB]
+set link_library   [list "*" $TTLIB]
+
+set file_format verilog
+read_file -format $file_format synchronizer.v
+read_file -format $file_format wptr_handler.v
+read_file -format $file_format rptr_handler.v
+read_file -format $file_format FIFO_mem.v
+read_file -format $file_format asynchronous_fifo.v
+
+current_design $top_module
+
+link
+
+check_design
+
+
+
+# Constraints Section
+
+
+create_clock -name wclk -period 10 [get_ports wclk]
+create_clock -name rclk -period 15 [get_ports rclk]
+
+set_clock_uncertainty 0.2 [get_clocks wclk]
+set_clock_uncertainty 0.2 [get_clocks rclk]
+
+set_clock_transition 0.1 [get_clocks wclk]
+set_clock_transition 0.1 [get_clocks rclk]
+
+set_input_delay -max 2.0 -clock wclk [get_ports {w_en data_in}]
+set_input_delay -max 2.0 -clock rclk [get_ports {r_en}]
+
+set_output_delay -max 2.0 -clock wclk [get_ports full]
+set_output_delay -max 2.0 -clock rclk [get_ports {data_out empty}]
+
+set_dont_touch_network [get_ports {wrst_n rrst_n}]
+
+set_max_transition 0.5 [current_design]
+set_max_capacitance 0.2 [current_design]
+
+set_driving_cell -lib_cell INV_X1 [remove_from_collection [all_inputs] {wclk rclk}]
+
+set_load 0.05 [all_outputs]
+
+set_operating_conditions -min_library "scmetro_ff" -min "scmetro_ff" \
+                         -max_library "scmetro_ss" -max "scmetro_ss"
+
+group_path -name IN2REG -from [all_inputs]
+group_path -name REG2OUT -to [all_outputs]
+group_path -name IN2OUT -from [all_inputs] -to [all_outputs]
+
+set_clock_groups -asynchronous \
+                 -group [get_clocks wclk] \
+                 -group [get_clocks rclk]
+
+
+
+# Compile & Reports
+
+compile_ultra
+
+report_area > area.rpt
+report_timing > timing.rpt
+report_power > power.rpt
